@@ -1,15 +1,22 @@
 import numpy as np
 
-from yaeos.core import GeModel
+from polykin.thermo.acm import FloryHuggins_activity
 
 from scipy.optimize import root, newton
 
 
-def get_K(model: GeModel, x, y, T):
+def get_K(m, chi, pm, x, y, T):
   """Calculo de K como relaciones de gamma
   """
-  ln_g_x = model.ln_gamma(x, T)
-  ln_g_y = model.ln_gamma(y, T)
+  phi_x = (x * pm) / sum(x * pm)
+  phi_y = (y * pm) / sum(y * pm)
+
+  ln_a_x  = FloryHuggins_activity(phi_x, m, chi)
+  ln_a_y  = FloryHuggins_activity(phi_y, m, chi) 
+
+  ln_g_x = ln_a_x - np.log(x)
+  ln_g_y = ln_a_y - np.log(y)
+
   lnK = ln_g_y - ln_g_x
   return np.exp(lnK), lnK
 
@@ -49,14 +56,19 @@ def beta_to_01(z, K):
   return Ki
 
 
-def same_activity(model: GeModel, x, y, T):
-  return np.allclose(
-      x * np.exp(model.ln_gamma(x, T)),
-      y * np.exp(model.ln_gamma(y, T))
-  )
+def same_activity(m, chi, pm, x, y, T):
+
+  phi_x = (x * pm) / sum(x * pm)
+  phi_y = (y * pm) / sum(y * pm)
+
+  ln_a_x = FloryHuggins_activity(phi_x, m, chi)
+  ln_a_y = FloryHuggins_activity(phi_y, m, chi)
+
+  return np.allclose(ln_a_x, ln_a_y)
 
 
-def flash_gamma_gamma(model: GeModel, z, K0, T, beta0=0.5, max_iters=400):
+def flash_gamma_gamma(params, z, K0, T, beta0=0.5, max_iters=400):
+  m, chi, pm = params
   K = K0
   for i in range(max_iters):
     K = beta_to_01(z, K)
@@ -69,8 +81,8 @@ def flash_gamma_gamma(model: GeModel, z, K0, T, beta0=0.5, max_iters=400):
     x = y/K
 
     # Calculate new K-values
-    K, lnK = get_K(model, x, y, T)
+    K, lnK = get_K(m, chi, pm, x, y, T)
 
-    if (same_activity(model, x, y, T)): break
+    if (same_activity(m, chi, pm, x, y, T)): break
 
   return x, y, beta, i
